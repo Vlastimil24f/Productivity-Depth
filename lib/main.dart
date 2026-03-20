@@ -197,6 +197,7 @@ const List<int> kLayerThresholds = [
 //  DEBUG — set false to disable daily log limit
 // ─────────────────────────────────────────────
 const bool kEnforceDailyLimit = false;
+
 class LayerIconWidget extends StatelessWidget {
   final int layerIndex;
   final double size;
@@ -611,6 +612,27 @@ class _OceanBackgroundState extends State<OceanBackground>
 class OceanPainter extends CustomPainter {
   final int layer;
   final double time;
+
+  // ── Shader caches ─────────────────────────────────────────────────────────
+  // Gradient shader creation (LinearGradient/RadialGradient.createShader) is
+  // expensive on iOS/Metal. These statics persist across painter instances so
+  // we pay the cost at most once per layer, not once per frame.
+  //
+  // All caches are invalidated when the screen size changes. Orientation is
+  // locked to portrait so this happens at most once (first paint).
+  // ──────────────────────────────────────────────────────────────────────────
+  static final Map<int, Shader> _bgShaderCache  = {};
+  static final Map<int, Shader> _vigShaderCache = {};
+  static Shader? _islandSeaShader;
+  static Size    _cachedSize = Size.zero;
+
+  static void _invalidateCaches(Size newSize) {
+    _bgShaderCache.clear();
+    _vigShaderCache.clear();
+    _islandSeaShader = null;
+    _cachedSize = newSize;
+  }
+
   OceanPainter({required this.layer, required this.time});
 
   @override
@@ -619,14 +641,21 @@ class OceanPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
+    // Invalidate gradient caches if the screen dimensions changed.
+    if (_cachedSize != size) _invalidateCaches(size);
+
+    // Background gradient — cached per layer index.
     canvas.drawRect(
       Rect.fromLTWH(0, 0, w, h),
       Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [data.topColor, data.bottomColor],
-        ).createShader(Rect.fromLTWH(0, 0, w, h)),
+        ..shader = _bgShaderCache.putIfAbsent(
+          layer,
+          () => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [data.topColor, data.bottomColor],
+          ).createShader(Rect.fromLTWH(0, 0, w, h)),
+        ),
     );
 
     if (layer == 0) {
@@ -646,15 +675,16 @@ class OceanPainter extends CustomPainter {
     canvas.drawCircle(Offset(w * 0.78, h * 0.13), 32,
         Paint()..color = const Color(0xFFFFF176).withOpacity(0.88));
 
-    // Sea
+    // Sea — gradient cached (layer 0 only, static colours).
+    _islandSeaShader ??= const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFF5BBFE0), Color(0xFF1A3A5C)],
+    ).createShader(Rect.fromLTWH(0, size.height * 0.48, size.width, size.height * 0.52));
+
     canvas.drawRect(
       Rect.fromLTWH(0, h * 0.48, w, h * 0.52),
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [const Color(0xFF5BBFE0), const Color(0xFF1A3A5C)],
-        ).createShader(Rect.fromLTWH(0, h * 0.48, w, h * 0.52)),
+      Paint()..shader = _islandSeaShader!,
     );
 
     // Wave
@@ -779,7 +809,7 @@ class OceanPainter extends CustomPainter {
       );
     }
 
-    // Anglerfish glow
+    // Anglerfish glow — time-dependent, cannot be cached.
     if (layer == 10) {
       canvas.drawCircle(
         Offset(w / 2, h * 0.3),
@@ -794,15 +824,18 @@ class OceanPainter extends CustomPainter {
       );
     }
 
-    // Vignette
+    // Vignette — same gradient for every layer; cached under key 0.
     if (layer > 0) {
       canvas.drawRect(
         Rect.fromLTWH(0, 0, w, h),
         Paint()
-          ..shader = RadialGradient(
-            colors: [Colors.transparent, Colors.black.withOpacity(0.32)],
-            radius: 0.85,
-          ).createShader(Rect.fromLTWH(0, 0, w, h)),
+          ..shader = _vigShaderCache.putIfAbsent(
+            0,
+            () => RadialGradient(
+              colors: [Colors.transparent, Colors.black.withOpacity(0.32)],
+              radius: 0.85,
+            ).createShader(Rect.fromLTWH(0, 0, w, h)),
+          ),
       );
     }
   }
@@ -810,6 +843,136 @@ class OceanPainter extends CustomPainter {
   @override
   bool shouldRepaint(OceanPainter old) =>
       old.time != time || old.layer != layer;
+}
+
+// ─────────────────────────────────────────────
+//  SHADER WARM-UP WIDGET
+// ─────────────────────────────────────────────
+/// Rendered inside an [Offstage] on the first frame of [OceanScreen].
+///
+/// Every decoration style used by dialogs and bottom sheets is reproduced
+/// here — same border-radius values, same colours, same button shapes.
+/// Flutter/Metal compiles the GPU shaders for these shapes on that first
+/// invisible frame, so when the user opens a real dialog there is no
+/// compilation stall and therefore no visible lag.
+class _ShaderWarmUp extends StatelessWidget {
+  const _ShaderWarmUp();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 300,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Main dialog container (radius 24 + border) ──────────────────
+          Container(
+            width: 260,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0C1F35),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white10, width: 0.5),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Circle icon container (used in every dialog)
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0x1FF4C842),
+                    border: Border.all(
+                      color: const Color(0x66F4C842),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Primary ElevatedButton (radius 12)
+                SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFF4C842),
+                      foregroundColor: const Color(0xFF1A1A2E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Secondary OutlinedButton (radius 12 — confirmation dialog)
+                SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: null,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white24, width: 0.5),
+                      foregroundColor: Colors.white60,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // ── AlertDialog shape (radius 20 — used in ActionsScreen) ───────
+          Container(
+            width: 260,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0C1F35),
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // ── Bottom sheet container (vertical radius 24) ──────────────────
+          Container(
+            width: 260,
+            height: 60,
+            decoration: const BoxDecoration(
+              color: Color(0xFF0A1929),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // ── Category tile decoration (radius 14) ─────────────────────────
+          Container(
+            width: 260,
+            height: 50,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white12, width: 0.5),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // ── Settings / mechanic badge tile (radius 12 / 14) ─────────────
+          Container(
+            width: 260,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white10, width: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -949,8 +1112,6 @@ class _OceanScreenState extends State<OceanScreen>
     return 10;
   }
 
-  // Returns coral delta for today (+gain or -loss)
-  // Returns coral delta for today's actions
   // Returns point value for a single action based on its priority
   double _priorityPoints(String action) {
     final p = priorities[action] ?? 'mid';
@@ -1633,24 +1794,31 @@ class _OceanScreenState extends State<OceanScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 1000),
-            child: OceanBackground(
-                key: ValueKey(currentLayer), layer: currentLayer),
+          // ── Ocean background isolated in its own repaint boundary.
+          // The 60 fps animation repaints only within this boundary and
+          // does not propagate into the UI layer above it.
+          RepaintBoundary(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 1000),
+              child: OceanBackground(
+                  key: ValueKey(currentLayer), layer: currentLayer),
+            ),
           ),
 
-          // Storm border pulse
+          // ── Storm border pulse — isolated so it doesn't dirty the UI.
           if (stormDays >= 2 && currentLayer > 0)
             Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _pulseCtrl,
-                  builder: (_, __) => DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.orange
-                            .withOpacity(0.15 + _pulseCtrl.value * 0.3),
-                        width: 3,
+              child: RepaintBoundary(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _pulseCtrl,
+                    builder: (_, __) => DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.orange
+                              .withOpacity(0.15 + _pulseCtrl.value * 0.3),
+                          width: 3,
+                        ),
                       ),
                     ),
                   ),
@@ -1958,6 +2126,12 @@ class _OceanScreenState extends State<OceanScreen>
               ],
             ),
           ),
+
+          // ── Shader warm-up: invisible on screen but forces Metal to compile
+          // shaders for every dialog/sheet decoration on the very first frame.
+          // This eliminates the first-tap lag on iOS. Zero runtime cost after
+          // the initial compile because the widget is static (no animations).
+          const Offstage(child: _ShaderWarmUp()),
         ],
       ),
     );
@@ -2461,7 +2635,7 @@ class _LogActionsSheetState extends State<LogActionsSheet> {
                               const SizedBox(height: 10),
                               const Text(
                                 'Once you dive, today\'s log is sealed. Make sure your actions are correct.',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: Colors.white54,
                                     fontSize: 13,
                                     height: 1.6),
@@ -2549,9 +2723,6 @@ class _LogActionsSheetState extends State<LogActionsSheet> {
 
 // ─────────────────────────────────────────────
 //  SETTINGS SHEET
-// ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-//  SETTINGS SHEET  (links menu)
 // ─────────────────────────────────────────────
 class SettingsSheet extends StatelessWidget {
   final List<String> categories;
@@ -3224,7 +3395,9 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          OceanBackground(layer: _bgLayer),
+          // ── Ocean background isolated — animation repaints stay within
+          // this boundary and don't propagate into the scrolling content.
+          RepaintBoundary(child: OceanBackground(layer: _bgLayer)),
           Container(color: Colors.black.withOpacity(0.55)),
           SafeArea(
             child: FadeTransition(
@@ -3498,9 +3671,9 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen>
                                               ),
                                             ),
                                             const SizedBox(width: 6),
-                                            Text(
+                                            const Text(
                                               'this week',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                   color: Colors.white54,
                                                   fontSize: 13),
                                             ),
@@ -3894,6 +4067,7 @@ class WeeklyBarChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(WeeklyBarChartPainter old) => false;
 }
+
 // ─────────────────────────────────────────────
 //  LAYER MAP SCREEN
 // ─────────────────────────────────────────────
@@ -3946,7 +4120,8 @@ class _LayerMapScreenState extends State<LayerMapScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          const OceanBackground(layer: 8),
+          // ── Ocean background isolated — keeps the scrolling list repaint-free.
+          const RepaintBoundary(child: OceanBackground(layer: 8)),
           Container(color: Colors.black.withOpacity(0.60)),
           SafeArea(
             child: FadeTransition(
