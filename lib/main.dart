@@ -366,6 +366,110 @@ const List<int> kLayerThresholds = [
 ];
 
 // ─────────────────────────────────────────────
+//  BADGE / TREASURE DEFINITIONS
+// ─────────────────────────────────────────────
+class BadgeDefinition {
+  final String id;
+  final String name;
+  final String description;
+  final String flavour;
+  final IconData icon;
+  final Color color;
+
+  const BadgeDefinition({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.flavour,
+    required this.icon,
+    required this.color,
+  });
+}
+
+const List<BadgeDefinition> kBadges = [
+  BadgeDefinition(
+    id: 'first_dive',
+    name: 'First Dive',
+    description: 'Logged your very first day',
+    flavour: 'Every journey into the deep begins with a single stroke.',
+    icon: Icons.water_drop_rounded,
+    color: Color(0xFF4FC3F7),
+  ),
+  BadgeDefinition(
+    id: 'first_light',
+    name: 'First Light',
+    description: 'Reached The Island',
+    flavour: 'You broke the surface. The sun remembers your face.',
+    icon: Icons.wb_sunny_rounded,
+    color: Color(0xFFFFC107),
+  ),
+  BadgeDefinition(
+    id: 'steady_current',
+    name: 'Steady Current',
+    description: 'Achieved a 7-day streak',
+    flavour: 'A week without faltering. The current carries you now.',
+    icon: Icons.local_fire_department_rounded,
+    color: Color(0xFFFFA726),
+  ),
+  BadgeDefinition(
+    id: 'tidal_force',
+    name: 'Tidal Force',
+    description: 'Achieved a 14-day streak',
+    flavour: 'Two weeks of relentless momentum. The ocean bends to your will.',
+    icon: Icons.whatshot_rounded,
+    color: Color(0xFFFF7043),
+  ),
+  BadgeDefinition(
+    id: 'century_diver',
+    name: 'Century Diver',
+    description: 'Logged 100 actions',
+    flavour: 'One hundred deliberate acts. The reef grows thick around you.',
+    icon: Icons.military_tech_rounded,
+    color: Color(0xFFAB47BC),
+  ),
+  BadgeDefinition(
+    id: 'storm_survivor',
+    name: 'Storm Survivor',
+    description: 'Survived a storm',
+    flavour: 'The tempest came and you endured. Scars are proof of survival.',
+    icon: Icons.bolt_rounded,
+    color: Colors.orange,
+  ),
+  BadgeDefinition(
+    id: 'deep_explorer',
+    name: 'Deep Explorer',
+    description: 'Reached the Anglerfish Lair',
+    flavour: 'Few descend this far and return to speak of it.',
+    icon: Icons.flashlight_on_rounded,
+    color: Color(0xFF00E676),
+  ),
+  BadgeDefinition(
+    id: 'abyss_walker',
+    name: 'Abyss Walker',
+    description: 'Visited The Abyss and clawed back',
+    flavour: 'You touched the very bottom and chose to rise again.',
+    icon: Icons.scuba_diving_rounded,
+    color: Color(0xFF5C6BC0),
+  ),
+  BadgeDefinition(
+    id: 'unstoppable_ascent',
+    name: 'Unstoppable Ascent',
+    description: 'Abyss to Island without breaking streak',
+    flavour: 'From absolute darkness to full sunlight. Not a single day lost.',
+    icon: Icons.rocket_launch_rounded,
+    color: Color(0xFFE040FB),
+  ),
+  BadgeDefinition(
+    id: 'coral_hoarder',
+    name: 'Coral Hoarder',
+    description: 'Accumulated 1500 corals',
+    flavour: 'Your reef is a fortress. The ocean itself pays you tribute.',
+    icon: Icons.spa_rounded,
+    color: Color(0xFFFF7043),
+  ),
+];
+
+// ─────────────────────────────────────────────
 //  DEBUG — set false to disable daily log limit
 // ─────────────────────────────────────────────
 const bool kEnforceDailyLimit = false;
@@ -498,6 +602,21 @@ class OceanHaptics {
       HapticFeedback.mediumImpact();
     });
     Future.delayed(const Duration(milliseconds: 230), () {
+      HapticFeedback.heavyImpact();
+    });
+  }
+
+  /// Badge / treasure unlocked — celebratory ascending cascade.
+  /// Four-beat pattern: light → medium → heavy → heavy (treasure drop).
+  static void badgeUnlock() {
+    HapticFeedback.lightImpact();
+    Future.delayed(const Duration(milliseconds: 90), () {
+      HapticFeedback.mediumImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 200), () {
+      HapticFeedback.heavyImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 340), () {
       HapticFeedback.heavyImpact();
     });
   }
@@ -3863,6 +3982,12 @@ class _OceanScreenState extends State<OceanScreen>
   // ── Log history (calendar) ────────────────────
   List<Map<String, dynamic>> logHistory = [];
 
+  // ── Badge / Treasure system ──────────────────
+  Set<String> unlockedBadges = {};
+  int totalActionsLogged = 0;
+  bool wasInAbyssThisStreak = false;
+  List<BadgeDefinition> _pendingBadgeReveals = [];
+
   late AnimationController _pulseCtrl;
 
   // ── Coral animation ────────────────────────────
@@ -3950,6 +4075,11 @@ class _OceanScreenState extends State<OceanScreen>
       _displayCorals = corals;
       _coralFrom = corals;
       _coralTo = corals;
+
+      // ── Badge / Treasure state ──
+      unlockedBadges = (prefs.getStringList('unlockedBadges') ?? []).toSet();
+      totalActionsLogged = prefs.getInt('totalActionsLogged') ?? 0;
+      wasInAbyssThisStreak = prefs.getBool('wasInAbyssThisStreak') ?? false;
     });
   }
 
@@ -3984,6 +4114,201 @@ class _OceanScreenState extends State<OceanScreen>
         'weeklyActivityKeys', weeklyActivityMap.keys.toList());
     await prefs.setStringList('weeklyActivityVals',
         weeklyActivityMap.values.map((e) => e.toString()).toList());
+
+    // ── Badge / Treasure state ──
+    await prefs.setStringList('unlockedBadges', unlockedBadges.toList());
+    await prefs.setInt('totalActionsLogged', totalActionsLogged);
+    await prefs.setBool('wasInAbyssThisStreak', wasInAbyssThisStreak);
+  }
+
+  // ── Badge / Treasure checking ────────────────
+  //
+  // Called after every log. Compares the new state against each badge's
+  // unlock condition. Newly unlocked badges are queued for reveal so they
+  // appear one at a time after the reflection dialog is dismissed.
+  void _checkBadges({
+    required int delta,
+    required bool stormJustFired,
+    required int layerBefore,
+  }) {
+    final before = Set<String>.from(unlockedBadges);
+
+    // 1. First Dive — any log at all
+    if (totalActionsLogged > 0) {
+      unlockedBadges.add('first_dive');
+    }
+
+    // 2. First Light — reached The Island
+    if (currentLayer == 0) {
+      unlockedBadges.add('first_light');
+    }
+
+    // 3. Steady Current — 7-day streak
+    if (streak >= 7) {
+      unlockedBadges.add('steady_current');
+    }
+
+    // 4. Tidal Force — 14-day streak
+    if (streak >= 14) {
+      unlockedBadges.add('tidal_force');
+    }
+
+    // 5. Century Diver — 100 total actions
+    if (totalActionsLogged >= 100) {
+      unlockedBadges.add('century_diver');
+    }
+
+    // 6. Storm Survivor — a storm was triggered (and you're still here)
+    if (stormJustFired) {
+      unlockedBadges.add('storm_survivor');
+    }
+
+    // 7. Deep Explorer — visited the Anglerfish Lair (layer 9)
+    if (deepestLayer >= 9) {
+      unlockedBadges.add('deep_explorer');
+    }
+
+    // 8. Abyss Walker — was at layer 10 at some point, now below 10
+    if (deepestLayer >= 10 && currentLayer < 10) {
+      unlockedBadges.add('abyss_walker');
+    }
+
+    // 9. Unstoppable Ascent — track with wasInAbyssThisStreak flag.
+    //    Use layerBefore so we catch the log where the user WAS at the
+    //    abyss and just rose from it in a single session.
+    if ((layerBefore >= 10 || currentLayer >= 10) && streak > 0) {
+      wasInAbyssThisStreak = true;
+    }
+    if (streak == 0) {
+      wasInAbyssThisStreak = false;
+    }
+    if (wasInAbyssThisStreak && currentLayer == 0) {
+      unlockedBadges.add('unstoppable_ascent');
+    }
+
+    // 10. Coral Hoarder — 1500+ corals
+    if (corals >= 1500) {
+      unlockedBadges.add('coral_hoarder');
+    }
+
+    // Queue newly unlocked badges for reveal
+    final newIds = unlockedBadges.difference(before);
+    if (newIds.isNotEmpty) {
+      _pendingBadgeReveals = kBadges
+          .where((b) => newIds.contains(b.id))
+          .toList();
+    }
+  }
+
+  /// Show queued badge reveals one at a time, chained via onDismiss.
+  void _showPendingBadgeReveals() {
+    if (_pendingBadgeReveals.isEmpty || !mounted) return;
+    final badge = _pendingBadgeReveals.removeAt(0);
+    OceanHaptics.badgeUnlock();
+    _showBadgeUnlockDialog(badge, onDismiss: _showPendingBadgeReveals);
+  }
+
+  void _showBadgeUnlockDialog(BadgeDefinition badge, {VoidCallback? onDismiss}) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C1F35),
+            borderRadius: BorderRadius.circular(24),
+            border:
+                Border.all(color: badge.color.withOpacity(0.25), width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Glow ring around the badge icon
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: badge.color.withOpacity(0.12),
+                  border: Border.all(
+                      color: badge.color.withOpacity(0.45), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: badge.color.withOpacity(0.25),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(badge.icon, color: badge.color, size: 32),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'TREASURE UNLOCKED',
+                style: TextStyle(
+                  color: const Color(0xFFF4C842).withOpacity(0.7),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                badge.name,
+                style: TextStyle(
+                  color: badge.color,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                badge.description,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                badge.flavour,
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    onDismiss?.call();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: badge.color,
+                    foregroundColor: const Color(0xFF1A1A2E),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('Claim',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, letterSpacing: 1)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ── Persist per-day history entry for calendar heatmap ──
@@ -4060,6 +4385,9 @@ class _OceanScreenState extends State<OceanScreen>
       rescueAvailable = true;
     }
 
+    // Track total actions for Century Diver badge
+    totalActionsLogged += selected.length;
+
     final points = _computePoints(selected);
     int delta = _coralDelta(points);
 
@@ -4083,11 +4411,13 @@ class _OceanScreenState extends State<OceanScreen>
       );
     }
 
+    bool stormJustFired = false;
     if (delta == 0 && currentLayer > 0) {
       stormDays++;
       if (stormDays >= 3) {
         delta = -50;
         stormDays = 0;
+        stormJustFired = true;
         OceanHaptics.storm();
         _showInfoDialog(
           title: 'A Storm Has Come',
@@ -4136,6 +4466,9 @@ class _OceanScreenState extends State<OceanScreen>
       corals = newCorals;
       currentLayer = newLayer;
     });
+
+    // Check badge conditions after all state mutations
+    _checkBadges(delta: delta, stormJustFired: stormJustFired, layerBefore: prev);
     _save();
 
     // Persist daily history for calendar heatmap
@@ -4174,32 +4507,69 @@ class _OceanScreenState extends State<OceanScreen>
 
       Future.delayed(const Duration(milliseconds: 500), () {
         if (!mounted) return;
-        _showReflection(actions, delta, prev, newLayer, onDismiss: () {
+        _showReflection(actions, delta, prev, newLayer,
+            showWeeklySummary: true, onDismiss: () {
           if (!mounted) return;
-          OceanHaptics.weeklySummary();
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => WeeklySummaryScreen(
-              layers: snapLayers,
-              actionCounts: snapActions,
-              coralChanges: snapCoralChanges,
-              activityMap: snapActivity,
-              startLayer: snapStart,
-              endLayer: newLayer,
-              totalCorals: newCorals,
-              weeklyCoralStart: snapCoralStart,
-            ),
-          ));
+          // Show badge reveals before weekly summary
+          if (_pendingBadgeReveals.isNotEmpty) {
+            final lastBadge = _pendingBadgeReveals.removeLast();
+            // Chain: show all badges, then the last one opens weekly summary
+            _pendingBadgeReveals.add(lastBadge);
+            final reveals = List<BadgeDefinition>.from(_pendingBadgeReveals);
+            _pendingBadgeReveals.clear();
+            void showChain(int i) {
+              if (!mounted) return;
+              if (i >= reveals.length) {
+                OceanHaptics.weeklySummary();
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => WeeklySummaryScreen(
+                    layers: snapLayers,
+                    actionCounts: snapActions,
+                    coralChanges: snapCoralChanges,
+                    activityMap: snapActivity,
+                    startLayer: snapStart,
+                    endLayer: newLayer,
+                    totalCorals: newCorals,
+                    weeklyCoralStart: snapCoralStart,
+                  ),
+                ));
+                return;
+              }
+              OceanHaptics.badgeUnlock();
+              _showBadgeUnlockDialog(reveals[i],
+                  onDismiss: () => showChain(i + 1));
+            }
+            showChain(0);
+          } else {
+            OceanHaptics.weeklySummary();
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => WeeklySummaryScreen(
+                layers: snapLayers,
+                actionCounts: snapActions,
+                coralChanges: snapCoralChanges,
+                activityMap: snapActivity,
+                startLayer: snapStart,
+                endLayer: newLayer,
+                totalCorals: newCorals,
+                weeklyCoralStart: snapCoralStart,
+              ),
+            ));
+          }
         });
       });
     } else {
       Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _showReflection(actions, delta, prev, newLayer);
+        if (mounted) {
+          _showReflection(actions, delta, prev, newLayer, onDismiss: () {
+            _showPendingBadgeReveals();
+          });
+        }
       });
     }
   }
 
   void _showReflection(int actions, int delta, int prev, int newLayer,
-      {VoidCallback? onDismiss}) {
+      {VoidCallback? onDismiss, bool showWeeklySummary = false}) {
     OceanHaptics.reflection(delta);
 
     // Layer transition haptics — crossing a depth boundary.
@@ -4325,7 +4695,7 @@ class _OceanScreenState extends State<OceanScreen>
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text(
-                    onDismiss != null ? 'See Weekly Summary' : 'Continue',
+                    showWeeklySummary ? 'See Weekly Summary' : 'Continue',
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, letterSpacing: 1)),
                 ),
@@ -4501,7 +4871,7 @@ class _OceanScreenState extends State<OceanScreen>
       'treasure': {
         'title': 'Treasure System',
         'body':
-            'Every 7 consecutive productive days unlocks new rewards — sea creatures, island decorations, coral reefs.\n\nComing in a future update.',
+            'Milestones in your ocean journey unlock treasure badges.\n\nReach new layers, build streaks, survive storms, and log actions to grow your collection.\n\nTap the Treasure pill below to view your badges.',
         'icon': Icons.stars_rounded,
         'color': Color(0xFFF4C842),
       },
@@ -4629,7 +4999,13 @@ class _OceanScreenState extends State<OceanScreen>
               () => _showMechanicInfo('rescue')),
           const SizedBox(width: 8),
           _mechBadge(Icons.stars_rounded, const Color(0xFFF4C842), 'Treasure',
-              () => _showMechanicInfo('treasure')),
+              () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => BadgeCollectionScreen(
+                unlockedBadges: unlockedBadges,
+              ),
+            ));
+          }),
         ],
       ),
     );
@@ -6911,6 +7287,1133 @@ class WeeklyBarChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(WeeklyBarChartPainter old) => false;
+}
+
+// ─────────────────────────────────────────────
+//  TREASURE BACKGROUND
+//
+//  "The Sunken Treasury"
+//  A deep ocean floor where ancient treasure has settled over centuries.
+//  Warm gold light filters from a distant surface, catching on coins and
+//  gems half-buried in sand. Golden dust drifts upward. Reverent, alive.
+//
+//  Two coprime controllers (53s, 89s) ensure every element loops seamlessly
+//  while never synchronising. Every particle, ray, and shimmer follows its
+//  own unique path parameterised by per-element phase offsets.
+// ─────────────────────────────────────────────
+class TreasureBackground extends StatefulWidget {
+  const TreasureBackground({super.key});
+
+  @override
+  State<TreasureBackground> createState() => _TreasureBackgroundState();
+}
+
+class _TreasureBackgroundState extends State<TreasureBackground>
+    with TickerProviderStateMixin {
+  late AnimationController _ctrl1;
+  late AnimationController _ctrl2;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl1 = AnimationController(
+        vsync: this, duration: const Duration(seconds: 53))
+      ..repeat();
+    _ctrl2 = AnimationController(
+        vsync: this, duration: const Duration(seconds: 89))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl1.dispose();
+    _ctrl2.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_ctrl1, _ctrl2]),
+      builder: (_, __) => CustomPaint(
+        painter: TreasurePainter(t1: _ctrl1.value, t2: _ctrl2.value),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class TreasurePainter extends CustomPainter {
+  final double t1;
+  final double t2;
+
+  TreasurePainter({required this.t1, required this.t2});
+
+  static double _s(double t, int n, double phase) =>
+      math.sin(t * n * math.pi * 2 + phase);
+  static double _c(double t, int n, double phase) =>
+      math.cos(t * n * math.pi * 2 + phase);
+
+  static Shader? _bgShader;
+  static Shader? _vigShader;
+  static Size _cachedSize = Size.zero;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    if (_cachedSize != size) {
+      _bgShader = null;
+      _vigShader = null;
+      _cachedSize = size;
+    }
+
+    _drawBackground(canvas, w, h);
+    _drawTreasureGlow(canvas, w, h);
+    _drawGoldenRays(canvas, w, h);
+    _drawSandFloor(canvas, w, h);
+    _drawCoins(canvas, w, h);
+    _drawGems(canvas, w, h);
+    _drawTreasureChest(canvas, w, h);
+    _drawChestCoins(canvas, w, h);
+    _drawRisingDust(canvas, w, h);
+    _drawAmbientMotes(canvas, w, h);
+    _drawVignette(canvas, w, h);
+  }
+
+  // ── Background gradient: warm golden ocean, full of light ──
+  void _drawBackground(Canvas canvas, double w, double h) {
+    _bgShader ??= const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF0A1E38),   // deep teal-blue at very top
+        Color(0xFF0F2A3E),   // warm navy
+        Color(0xFF163040),   // golden navy mid
+        Color(0xFF1A3028),   // warm teal-green at floor
+      ],
+      stops: [0.0, 0.30, 0.65, 1.0],
+    ).createShader(Rect.fromLTWH(0, 0, w, h));
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, w, h), Paint()..shader = _bgShader);
+
+    // Golden wash over the entire scene for warmth
+    final washPulse = 0.04 + _s(t1, 1, 0.3) * 0.008;
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, w, h),
+      Paint()..color = Color(0xFFF4C842).withOpacity(washPulse),
+    );
+  }
+
+  // ── Warm radial glow from the treasure floor ──
+  void _drawTreasureGlow(Canvas canvas, double w, double h) {
+    // Primary treasure glow, strong and warm
+    final pulse = 0.10 + _s(t1, 2, 0.7) * 0.025 + _s(t2, 1, 1.3) * 0.015;
+    final cx = w * 0.50 + _s(t2, 1, 2.1) * w * 0.02;
+    final cy = h * 0.80 + _c(t2, 1, 0.8) * h * 0.008;
+    final r = w * 0.75;
+
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(cx, cy), width: r * 2, height: r * 1.4),
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Color(0xFFF4C842).withOpacity(pulse),
+            Color(0xFFD4A017).withOpacity(pulse * 0.5),
+            Color(0xFFB8860B).withOpacity(pulse * 0.15),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.30, 0.60, 1.0],
+        ).createShader(Rect.fromCenter(
+            center: Offset(cx, cy), width: r * 2, height: r * 1.4)),
+    );
+
+    // Secondary warm ambient glow at centre-top (sunlight from above)
+    final pulse2 = 0.04 + _s(t1, 3, 2.1) * 0.012;
+    canvas.drawCircle(
+      Offset(w * 0.50, h * 0.08),
+      w * 0.50,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Color(0xFFFFF8E1).withOpacity(pulse2),
+            Color(0xFFF4C842).withOpacity(pulse2 * 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.4, 1.0],
+        ).createShader(Rect.fromCenter(
+            center: Offset(w * 0.50, h * 0.08),
+            width: w * 1.0,
+            height: w * 1.0)),
+    );
+
+    // Chest-centred glow (pulsing from the treasure itself)
+    final chestPulse = 0.07 + _s(t1, 2, 3.8) * 0.020 + _s(t2, 1, 5.1) * 0.012;
+    final chestCx = w * 0.50;
+    final chestCy = h * 0.78;
+    canvas.drawCircle(
+      Offset(chestCx, chestCy),
+      w * 0.30,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Color(0xFFF4C842).withOpacity(chestPulse),
+            Color(0xFFFFB300).withOpacity(chestPulse * 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.5, 1.0],
+        ).createShader(Rect.fromCenter(
+            center: Offset(chestCx, chestCy),
+            width: w * 0.60,
+            height: w * 0.60)),
+    );
+  }
+
+  // ── Golden caustic light shafts from above ──
+  void _drawGoldenRays(Canvas canvas, double w, double h) {
+    const phases = [0.0, 1.8, 3.5, 5.2, 7.0, 8.8, 10.3];
+    const xFracs = [0.10, 0.28, 0.44, 0.58, 0.72, 0.84, 0.95];
+    const widths = [20.0, 16.0, 24.0, 14.0, 22.0, 12.0, 18.0];
+
+    for (int i = 0; i < 7; i++) {
+      final phase = phases[i];
+      final baseX = w * xFracs[i];
+      final rayW = widths[i];
+
+      // Each ray breathes independently
+      final breathAlpha = 0.028 + _s(t1, 3 + i, phase) * 0.014
+          + _s(t2, 1, phase * 0.7) * 0.008;
+      if (breathAlpha <= 0.003) continue;
+
+      final sway = _s(t2, 1, phase + 1.0) * w * 0.025
+          + _s(t1, 2 + i % 3, phase * 1.3) * w * 0.012;
+
+      // Rays taper from narrow at top to wide at bottom
+      final topX = baseX + sway * 0.3;
+      final botX = baseX + sway;
+      final topW = rayW * 0.3;
+      final botW = rayW * (1.0 + _s(t1, 2 + i, phase * 0.5).abs() * 0.5);
+
+      final path = Path()
+        ..moveTo(topX - topW, 0)
+        ..lineTo(topX + topW, 0)
+        ..lineTo(botX + botW, h * 0.88)
+        ..lineTo(botX - botW, h * 0.88)
+        ..close();
+
+      canvas.drawPath(
+        path,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFF8E1).withOpacity(breathAlpha * 0.5),
+              Color(0xFFF4C842).withOpacity(breathAlpha),
+              Color(0xFFFFB300).withOpacity(breathAlpha * 0.5),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.25, 0.60, 1.0],
+          ).createShader(Rect.fromLTWH(0, 0, w, h * 0.88)),
+      );
+    }
+  }
+
+  // ── Sandy ocean floor with undulation ──
+  double _floorY(double x, double w, double h) {
+    final xn = x / w;
+    return h * 0.84
+        + math.sin(xn * 2.5 * math.pi * 2) * h * 0.010
+        + math.sin(xn * 6 * math.pi * 2 + 1.0) * h * 0.005
+        + math.sin(xn * 13 * math.pi * 2 + 2.7) * h * 0.002;
+  }
+
+  void _drawSandFloor(Canvas canvas, double w, double h) {
+    // Bedrock
+    canvas.drawRect(Rect.fromLTWH(0, h * 0.86, w, h * 0.16),
+        Paint()..color = const Color(0xFF0C1810));
+
+    // Deep substrate
+    final deepPath = Path()..moveTo(-2, h);
+    for (double x = -2; x <= w + 2; x += 3) {
+      deepPath.lineTo(x, _floorY(x, w, h) + h * 0.025);
+    }
+    deepPath..lineTo(w + 2, h)..close();
+    canvas.drawPath(deepPath, Paint()..color = const Color(0xFF142214));
+
+    // Sandy surface with golden warmth
+    final surfPath = Path()..moveTo(-2, h);
+    for (double x = -2; x <= w + 2; x += 3) {
+      surfPath.lineTo(x, _floorY(x, w, h));
+    }
+    surfPath..lineTo(w + 2, h)..close();
+    canvas.drawPath(
+      surfPath,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0xFF243820), Color(0xFF142214)],
+        ).createShader(Rect.fromLTWH(0, h * 0.82, w, h * 0.05)),
+    );
+
+    // Warm golden surface highlight
+    final edgePath = Path();
+    for (double x = -2; x <= w + 2; x += 3) {
+      final y = _floorY(x, w, h);
+      if (x <= -2) {
+        edgePath.moveTo(x, y);
+      } else {
+        edgePath.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+      edgePath,
+      Paint()
+        ..color = const Color(0xFFF4C842).withOpacity(0.10)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke,
+    );
+
+    // Sand ripples
+    for (int i = 0; i < 5; i++) {
+      final sn = (i * 0.20) % 1.0;
+      final ry = _floorY(sn * w, w, h) + h * 0.012 + i * h * 0.006;
+      final ripplePath = Path();
+      final startX = sn * w * 0.25 + i * w * 0.08;
+      for (double x = startX; x <= startX + w * 0.18; x += 3) {
+        final y = ry + math.sin(x / w * 16 * math.pi * 2) * 1.0;
+        if (x <= startX) {
+          ripplePath.moveTo(x, y);
+        } else {
+          ripplePath.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(
+        ripplePath,
+        Paint()
+          ..color = const Color(0xFF2A4A28).withOpacity(0.10)
+          ..strokeWidth = 0.5
+          ..style = PaintingStyle.stroke,
+      );
+    }
+  }
+
+  // ── Scattered gold coins on the floor ──
+  void _drawCoins(Canvas canvas, double w, double h) {
+    const coins = [
+      (0.08, 4.5, 0.0),   (0.18, 3.8, 1.5),   (0.30, 5.5, 3.1),
+      (0.72, 4.0, 4.7),   (0.80, 5.0, 6.2),   (0.90, 4.2, 2.4),
+      (0.15, 3.5, 7.8),   (0.25, 3.0, 8.3),
+      (0.75, 3.8, 1.1),   (0.85, 4.8, 9.2),
+    ];
+
+    for (int i = 0; i < coins.length; i++) {
+      final (xFrac, radius, phase) = coins[i];
+      final cx = w * xFrac;
+      final surfY = _floorY(cx, w, h);
+      final cy = surfY - radius * 0.3;
+
+      final shimmer = _s(t1, 4 + i % 5, phase) * 0.5 + 0.5;
+      final baseAlpha = 0.20 + shimmer * 0.30;
+      final highlightAlpha = shimmer * shimmer * 0.45;
+
+      // Coin body
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, cy), width: radius * 2, height: radius * 0.7),
+        Paint()..color = Color(0xFFF4C842).withOpacity(baseAlpha),
+      );
+
+      // Inner ring
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, cy),
+            width: radius * 1.4,
+            height: radius * 0.5),
+        Paint()
+          ..color = Color(0xFFFFB300).withOpacity(baseAlpha * 0.6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5,
+      );
+
+      // Specular highlight
+      if (highlightAlpha > 0.05) {
+        final hlX = cx + _s(t1, 3 + i % 4, phase + 1.0) * radius * 0.4;
+        canvas.drawOval(
+          Rect.fromCenter(
+              center: Offset(hlX, cy - radius * 0.08),
+              width: radius * 0.6,
+              height: radius * 0.2),
+          Paint()..color = Colors.white.withOpacity(highlightAlpha),
+        );
+      }
+    }
+  }
+
+  // ── Gem clusters half-buried in sand ──
+  void _drawGems(Canvas canvas, double w, double h) {
+    const gems = [
+      (0.12, Color(0xFFE040FB), 4.0, 0.0),   // amethyst
+      (0.22, Color(0xFF4CAF50), 3.5, 2.3),   // emerald
+      (0.82, Color(0xFFE53935), 3.8, 4.6),   // ruby
+      (0.92, Color(0xFF42A5F5), 3.2, 6.8),   // sapphire
+      (0.05, Color(0xFFFFEB3B), 3.0, 8.1),   // topaz
+    ];
+
+    for (int i = 0; i < gems.length; i++) {
+      final (xFrac, color, radius, phase) = gems[i];
+      final cx = w * xFrac;
+      final surfY = _floorY(cx, w, h);
+      final cy = surfY - radius * 0.5;
+
+      final sparkle = (_s(t1, 5 + i, phase) * 0.5 + 0.5);
+      final alpha = 0.18 + sparkle * 0.32;
+
+      // Gem body (diamond)
+      final gemPath = Path()
+        ..moveTo(cx, cy - radius)
+        ..lineTo(cx + radius * 0.7, cy)
+        ..lineTo(cx, cy + radius * 0.4)
+        ..lineTo(cx - radius * 0.7, cy)
+        ..close();
+
+      canvas.drawPath(gemPath, Paint()..color = color.withOpacity(alpha));
+
+      // Facet lines
+      canvas.drawLine(
+        Offset(cx, cy - radius),
+        Offset(cx, cy + radius * 0.4),
+        Paint()
+          ..color = color.withOpacity(alpha * 0.5)
+          ..strokeWidth = 0.4,
+      );
+      canvas.drawLine(
+        Offset(cx - radius * 0.7, cy),
+        Offset(cx + radius * 0.7, cy),
+        Paint()
+          ..color = color.withOpacity(alpha * 0.4)
+          ..strokeWidth = 0.4,
+      );
+
+      // Apex sparkle
+      if (sparkle > 0.65) {
+        final sAlpha = (sparkle - 0.65) / 0.35 * 0.40;
+        canvas.drawCircle(
+          Offset(cx, cy - radius),
+          1.5 + sparkle * 1.2,
+          Paint()..color = Colors.white.withOpacity(sAlpha),
+        );
+      }
+
+      // Soft glow
+      canvas.drawCircle(
+        Offset(cx, cy),
+        radius * 3.0,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              color.withOpacity(alpha * 0.15),
+              Colors.transparent,
+            ],
+          ).createShader(Rect.fromCenter(
+              center: Offset(cx, cy),
+              width: radius * 6,
+              height: radius * 6)),
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  TREASURE CHEST
+  //
+  //  Centred on the floor, open lid, coins spilling out.
+  //  Drawn with paths for a hand-crafted silhouette that matches the
+  //  app's illustrative style. The chest glows from within.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _drawTreasureChest(Canvas canvas, double w, double h) {
+    final cx = w * 0.50;
+    final baseY = _floorY(cx, w, h);
+
+    // Chest dimensions (proportional to screen)
+    final cw = w * 0.28;   // chest width
+    final ch = cw * 0.45;  // chest body height
+    final lidH = ch * 0.38; // lid height
+
+    final left = cx - cw / 2;
+    final right = cx + cw / 2;
+    final bodyTop = baseY - ch;
+    final bodyBot = baseY;
+    final lidTop = bodyTop - lidH;
+
+    // ── Interior glow (visible through open lid) ──
+    final interiorPulse = 0.55 + _s(t1, 2, 3.8) * 0.12 + _s(t2, 1, 5.1) * 0.08;
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx, bodyTop + ch * 0.15),
+          width: cw * 0.85,
+          height: ch * 0.70),
+      Paint()..color = Color(0xFFF4C842).withOpacity(interiorPulse * 0.40),
+    );
+    // Bright core
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx, bodyTop + ch * 0.05),
+          width: cw * 0.50,
+          height: ch * 0.35),
+      Paint()..color = Color(0xFFFFF8E1).withOpacity(interiorPulse * 0.25),
+    );
+
+    // ── Chest body (rounded trapezoid) ──
+    final bodyPath = Path()
+      ..moveTo(left + 4, bodyTop)
+      ..lineTo(right - 4, bodyTop)
+      ..quadraticBezierTo(right, bodyTop, right, bodyTop + 4)
+      ..lineTo(right + 2, bodyBot - 4)
+      ..quadraticBezierTo(right + 2, bodyBot, right - 2, bodyBot)
+      ..lineTo(left + 2, bodyBot)
+      ..quadraticBezierTo(left - 2, bodyBot, left - 2, bodyBot - 4)
+      ..lineTo(left, bodyTop + 4)
+      ..quadraticBezierTo(left, bodyTop, left + 4, bodyTop)
+      ..close();
+
+    // Body fill (dark wood)
+    canvas.drawPath(bodyPath,
+        Paint()..color = const Color(0xFF3E2415));
+
+    // Wood grain lines
+    for (int i = 0; i < 3; i++) {
+      final gy = bodyTop + ch * (0.25 + i * 0.25);
+      canvas.drawLine(
+        Offset(left + 3, gy),
+        Offset(right - 3, gy),
+        Paint()
+          ..color = const Color(0xFF2A1808).withOpacity(0.60)
+          ..strokeWidth = 0.8,
+      );
+    }
+
+    // Body border highlight
+    canvas.drawPath(
+      bodyPath,
+      Paint()
+        ..color = const Color(0xFFF4C842).withOpacity(0.25)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    // Metal bands (horizontal)
+    for (final bandY in [bodyTop + ch * 0.12, bodyBot - ch * 0.12]) {
+      canvas.drawLine(
+        Offset(left - 1, bandY),
+        Offset(right + 1, bandY),
+        Paint()
+          ..color = const Color(0xFFD4A017).withOpacity(0.50)
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round,
+      );
+      // Band highlight
+      canvas.drawLine(
+        Offset(left + cw * 0.1, bandY - 0.8),
+        Offset(right - cw * 0.1, bandY - 0.8),
+        Paint()
+          ..color = const Color(0xFFF4C842).withOpacity(0.25)
+          ..strokeWidth = 0.6,
+      );
+    }
+
+    // Lock plate
+    final lockCx = cx;
+    final lockCy = bodyTop + ch * 0.50;
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(lockCx, lockCy), width: 10, height: 8),
+      Paint()..color = const Color(0xFFD4A017).withOpacity(0.65),
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(lockCx, lockCy), width: 10, height: 8),
+      Paint()
+        ..color = const Color(0xFFF4C842).withOpacity(0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.6,
+    );
+    // Keyhole
+    canvas.drawCircle(
+      Offset(lockCx, lockCy - 1),
+      1.5,
+      Paint()..color = const Color(0xFF1A0E04),
+    );
+    canvas.drawLine(
+      Offset(lockCx, lockCy),
+      Offset(lockCx, lockCy + 2.5),
+      Paint()
+        ..color = const Color(0xFF1A0E04)
+        ..strokeWidth = 1.2,
+    );
+
+    // ── Open lid (angled back, domed top) ──
+    final lidAngle = 0.30 + _s(t1, 1, 4.5) * 0.015; // very subtle breathing
+    final lidBackY = lidTop - lidH * lidAngle;
+    final lidPath = Path()
+      ..moveTo(left + 2, bodyTop)
+      ..lineTo(right - 2, bodyTop)
+      // Lid rear edge (raised, slightly narrower)
+      ..lineTo(right - 6, lidBackY)
+      // Domed top of lid
+      ..quadraticBezierTo(cx, lidBackY - lidH * 0.40, left + 6, lidBackY)
+      ..close();
+
+    canvas.drawPath(lidPath,
+        Paint()..color = const Color(0xFF4A2E18));
+
+    // Lid wood grain
+    final lidMidY = bodyTop + (lidBackY - bodyTop) * 0.5;
+    canvas.drawLine(
+      Offset(left + 8, lidMidY),
+      Offset(right - 8, lidMidY),
+      Paint()
+        ..color = const Color(0xFF2A1808).withOpacity(0.40)
+        ..strokeWidth = 0.6,
+    );
+
+    // Lid border
+    canvas.drawPath(
+      lidPath,
+      Paint()
+        ..color = const Color(0xFFF4C842).withOpacity(0.20)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+
+    // Lid metal band
+    final lidBandY = bodyTop + (lidBackY - bodyTop) * 0.35;
+    canvas.drawLine(
+      Offset(left + 5, lidBandY),
+      Offset(right - 5, lidBandY),
+      Paint()
+        ..color = const Color(0xFFD4A017).withOpacity(0.40)
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // ── Sand mounding around chest base ──
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx, baseY + 2),
+          width: cw * 1.20,
+          height: ch * 0.18),
+      Paint()..color = const Color(0xFF1C3020).withOpacity(0.70),
+    );
+  }
+
+  // ── Coins spilling from the open chest ──
+  void _drawChestCoins(Canvas canvas, double w, double h) {
+    final cx = w * 0.50;
+    final baseY = _floorY(cx, w, h);
+    final cw = w * 0.28;
+    final ch = cw * 0.45;
+    final bodyTop = baseY - ch;
+
+    // Coins visible inside the chest opening (pile at the rim)
+    const insideCoins = [
+      (-0.25, -0.08, 5.0, 0.3),  (0.00, -0.12, 5.5, 1.7),
+      (0.20, -0.06, 4.5, 3.2),   (-0.12, -0.15, 4.0, 5.0),
+      (0.10, -0.10, 5.0, 6.8),   (0.28, -0.14, 3.5, 8.2),
+      (-0.30, -0.13, 4.0, 9.5),
+    ];
+
+    for (int i = 0; i < insideCoins.length; i++) {
+      final (dx, dy, radius, phase) = insideCoins[i];
+      final coinX = cx + cw * dx;
+      final coinY = bodyTop + ch * dy;
+
+      final shimmer = _s(t1, 5 + i % 6, phase) * 0.5 + 0.5;
+      final alpha = 0.40 + shimmer * 0.40;
+
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(coinX, coinY),
+            width: radius * 2,
+            height: radius * 0.65),
+        Paint()..color = Color(0xFFF4C842).withOpacity(alpha),
+      );
+      // Highlight
+      if (shimmer > 0.6) {
+        canvas.drawOval(
+          Rect.fromCenter(
+              center: Offset(coinX + radius * 0.15, coinY - radius * 0.10),
+              width: radius * 0.7,
+              height: radius * 0.20),
+          Paint()..color = Colors.white.withOpacity((shimmer - 0.6) * 0.60),
+        );
+      }
+    }
+
+    // Coins that have spilled onto the sand around the chest
+    const spillCoins = [
+      (-0.22, 0.02, 4.5, 0.5),  (0.24, 0.01, 5.0, 2.1),
+      (-0.30, 0.04, 3.8, 3.8),  (0.32, 0.03, 4.2, 5.5),
+      (-0.18, 0.05, 3.5, 7.1),  (0.15, 0.06, 4.0, 8.7),
+      (-0.35, 0.06, 3.0, 10.1), (0.38, 0.05, 3.5, 0.9),
+    ];
+
+    for (int i = 0; i < spillCoins.length; i++) {
+      final (dx, dy, radius, phase) = spillCoins[i];
+      final coinX = cx + cw * dx;
+      final coinY = baseY + ch * dy;
+
+      final shimmer = _s(t1, 4 + i % 7, phase) * 0.5 + 0.5;
+      final alpha = 0.25 + shimmer * 0.35;
+
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(coinX, coinY),
+            width: radius * 2,
+            height: radius * 0.65),
+        Paint()..color = Color(0xFFF4C842).withOpacity(alpha),
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(coinX, coinY),
+            width: radius * 1.3,
+            height: radius * 0.42),
+        Paint()
+          ..color = Color(0xFFFFB300).withOpacity(alpha * 0.5)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.4,
+      );
+    }
+  }
+
+  // ── Rising gold dust particles ──
+  void _drawRisingDust(Canvas canvas, double w, double h) {
+    for (int i = 0; i < 18; i++) {
+      final sn = (i * 0.0556) % 1.0;
+      final driftN = 2 + (i % 5);
+      final lateralN = 3 + (i % 4);
+      final phase = sn * 11.7;
+
+      final yFrac = 1.0 - ((sn + t1 * driftN) % 1.0);
+      final py = yFrac * h * 1.15 - h * 0.05;
+
+      final amp = w * (0.03 + sn * 0.04);
+      final px = w * (0.08 + sn * 0.84)
+          + _s(t1, lateralN, phase) * amp
+          + _s(t2, 1, phase * 0.6) * amp * 0.4;
+
+      if (py < -10 || py > h + 10) continue;
+
+      final edgeFade = (1.0 - (yFrac - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+      final twinkle = 0.5 + _s(t1, 6 + i % 7, phase + 2.0) * 0.5;
+      final alpha = edgeFade * twinkle * 0.38;
+      if (alpha < 0.01) continue;
+
+      final r = 0.8 + sn * 1.4 + _s(t1, 4 + i % 3, phase) * 0.3;
+
+      canvas.drawCircle(
+        Offset(px, py),
+        r,
+        Paint()..color = Color(0xFFF4C842).withOpacity(alpha),
+      );
+      canvas.drawCircle(
+        Offset(px, py),
+        r * 3.5,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              Color(0xFFFFB300).withOpacity(alpha * 0.40),
+              Colors.transparent,
+            ],
+          ).createShader(Rect.fromCenter(
+              center: Offset(px, py), width: r * 7, height: r * 7)),
+      );
+    }
+  }
+
+  // ── Ambient warm motes ──
+  void _drawAmbientMotes(Canvas canvas, double w, double h) {
+    const centreXs = [0.15, 0.30, 0.48, 0.62, 0.80, 0.22, 0.55, 0.75, 0.40, 0.88];
+    const centreYs = [0.25, 0.50, 0.35, 0.60, 0.20, 0.70, 0.15, 0.45, 0.55, 0.38];
+    const radiusXs = [0.06, 0.04, 0.05, 0.07, 0.03, 0.05, 0.04, 0.06, 0.03, 0.05];
+    const radiusYs = [0.04, 0.06, 0.03, 0.04, 0.05, 0.03, 0.06, 0.03, 0.05, 0.04];
+    const speeds  = [2,    3,    2,    3,    4,    2,    3,    2,    3,    4   ];
+    const phases  = [0.0,  1.2,  2.8,  4.1,  5.6,  7.0,  8.3,  9.5,  0.7,  3.4];
+
+    for (int i = 0; i < 10; i++) {
+      final orbitCx = w * centreXs[i];
+      final orbitCy = h * centreYs[i];
+      final orbitRx = w * radiusXs[i];
+      final orbitRy = h * radiusYs[i];
+      final speed = speeds[i];
+      final phase = phases[i];
+
+      final mx = orbitCx + _c(t1, speed, phase) * orbitRx
+          + _s(t2, 1, phase * 0.8) * orbitRx * 0.3;
+      final my = orbitCy + _s(t1, speed, phase) * orbitRy
+          + _c(t2, 1, phase * 1.2) * orbitRy * 0.3;
+
+      final twinkle = 0.5 + _s(t1, 7 + i % 5, phase + 3.0) * 0.5;
+      final alpha = twinkle * 0.22;
+      if (alpha < 0.01) continue;
+
+      final isGold = i % 4 != 0;
+      final color = isGold ? const Color(0xFFF4C842) : const Color(0xFFFFF8E1);
+      final r = 0.7 + (i % 3) * 0.3;
+
+      canvas.drawCircle(
+        Offset(mx, my),
+        r,
+        Paint()..color = color.withOpacity(alpha),
+      );
+      canvas.drawCircle(
+        Offset(mx, my),
+        r * 4.0,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [color.withOpacity(alpha * 0.35), Colors.transparent],
+          ).createShader(Rect.fromCenter(
+              center: Offset(mx, my), width: r * 8, height: r * 8)),
+      );
+    }
+  }
+
+  // ── Vignette (softened for brighter feel) ──
+  void _drawVignette(Canvas canvas, double w, double h) {
+    _vigShader ??= RadialGradient(
+      colors: [Colors.transparent, Colors.black.withOpacity(0.40)],
+      radius: 0.82,
+    ).createShader(Rect.fromLTWH(0, 0, w, h));
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, w, h), Paint()..shader = _vigShader);
+  }
+
+  @override
+  bool shouldRepaint(TreasurePainter old) => true;
+}
+
+// ─────────────────────────────────────────────
+//  BADGE COLLECTION SCREEN (Treasure System)
+// ─────────────────────────────────────────────
+class BadgeCollectionScreen extends StatefulWidget {
+  final Set<String> unlockedBadges;
+
+  const BadgeCollectionScreen({super.key, required this.unlockedBadges});
+
+  @override
+  State<BadgeCollectionScreen> createState() => _BadgeCollectionScreenState();
+}
+
+class _BadgeCollectionScreenState extends State<BadgeCollectionScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _fadeCtrl;
+  late Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.unlockedBadges.length;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          const RepaintBoundary(child: TreasureBackground()),
+          SafeArea(
+            child: FadeTransition(
+              opacity: _fade,
+              child: Column(
+                children: [
+                  // ── Header ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.white.withOpacity(0.14),
+                                  width: 0.5),
+                            ),
+                            child: const Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white60,
+                                size: 16),
+                          ),
+                        ),
+                        const Spacer(),
+                        const Text(
+                          'TREASURE',
+                          style: TextStyle(
+                            color: Colors.white60,
+                            fontSize: 11,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        const SizedBox(width: 34),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '$count of ${kBadges.length} unlocked',
+                    style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+
+                  // ── Progress bar ──
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 48),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: count / kBadges.length,
+                        minHeight: 4,
+                        backgroundColor: Colors.white.withOpacity(0.08),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFFF4C842)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Badge grid ──
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 4),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 1.0,
+                      ),
+                      itemCount: kBadges.length,
+                      itemBuilder: (context, index) {
+                        final badge = kBadges[index];
+                        final unlocked =
+                            widget.unlockedBadges.contains(badge.id);
+                        return _BadgeCard(badge: badge, unlocked: unlocked);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BadgeCard extends StatelessWidget {
+  final BadgeDefinition badge;
+  final bool unlocked;
+
+  const _BadgeCard({required this.badge, required this.unlocked});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: unlocked
+          ? () {
+              OceanHaptics.surfaceTap();
+              showDialog(
+                context: context,
+                builder: (_) => Dialog(
+                  backgroundColor: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0C1F35),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                          color: badge.color.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: badge.color.withOpacity(0.12),
+                            border: Border.all(
+                                color: badge.color.withOpacity(0.45),
+                                width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: badge.color.withOpacity(0.20),
+                                blurRadius: 20,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child:
+                              Icon(badge.icon, color: badge.color, size: 28),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          badge.name,
+                          style: TextStyle(
+                            color: badge.color,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          badge.description,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          badge.flavour,
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            height: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 22),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: badge.color,
+                              foregroundColor: const Color(0xFF1A1A2E),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text('Close',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          : null,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: unlocked
+              ? badge.color.withOpacity(0.06)
+              : Colors.white.withOpacity(0.02),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: unlocked
+                ? badge.color.withOpacity(0.20)
+                : Colors.white.withOpacity(0.06),
+            width: 0.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Icon with optional lock overlay
+            SizedBox(
+              width: 52,
+              height: 52,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: unlocked
+                          ? badge.color.withOpacity(0.12)
+                          : Colors.white.withOpacity(0.04),
+                      border: Border.all(
+                        color: unlocked
+                            ? badge.color.withOpacity(0.35)
+                            : Colors.white.withOpacity(0.08),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      unlocked ? badge.icon : Icons.lock_outline_rounded,
+                      color: unlocked
+                          ? badge.color
+                          : Colors.white.withOpacity(0.15),
+                      size: unlocked ? 22 : 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              unlocked ? badge.name : '???',
+              style: TextStyle(
+                color: unlocked
+                    ? Colors.white.withOpacity(0.85)
+                    : Colors.white.withOpacity(0.18),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              unlocked ? badge.description : 'Locked',
+              style: TextStyle(
+                color: unlocked
+                    ? Colors.white.withOpacity(0.38)
+                    : Colors.white.withOpacity(0.10),
+                fontSize: 10,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
